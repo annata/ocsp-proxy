@@ -16,6 +16,10 @@ Usage
 
    HTTP_PROXY=http://proxy:8888 ./ocsp-proxy -ocsphost ocspserver.com -http :8080
 
+   ocsphost=ocspserver.com http=:8080 ./ocsp-proxy 
+
+   HTTP_PROXY=http://proxy:8888 ocsphost=ocspserver.com http=:8080 ./ocsp-proxy 
+
 Il will listen on port 8080 for HTTP request and will forward the request to the ocsphost,
 using the generic http proxy supplied the Go stdlib way.
 
@@ -30,3 +34,6 @@ To find out your ocsphost, as far as I know:
    openssl x509 -in certificate.crt -noout -text | grep OCSP
 
 (use the domain without scheme)
+
+
+
