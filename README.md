@@ -28,7 +28,11 @@ openssl x509 -in certificate.crt -noout -text | grep OCSP
 Then start the proxy with `ocsphost` (required) and `http` (optinal, default listen on port 8080):
 
 ```sh
-docker run -d --rm --name ocsp-proxy -p 8080:8080 -e ocsphost='http://ocsp.int-x3.letsencrypt.org' -e http=':8080' cooolin/ocsp-proxy
+docker run -d --rm --name ocsp-proxy -p 8080:8080 \
+           -e HTTP_PROXY=http://YOUR_PROXY:8888 \
+           -e ocsphost='http://ocsp.int-x3.letsencrypt.org' \
+           -e http=':8080' \
+           cooolin/ocsp-proxy
 ```
 
 it will listen on port 8080 for HTTP request and will forward the request to the `ocsphost`.
@@ -63,6 +67,7 @@ services:
     image: cooolin/ocsp-proxy
     container_name: ocsp-proxy
     environment:
+      - HTTP_PROXY=http://YOUR_PROXY:8888
       - ocsphost=http://ocsp.int-x3.letsencrypt.org
       - http=:8080
     restart: always
@@ -86,9 +91,35 @@ server {
 }
 ```
 
-## Test your OCSP
+# What if my server is outside of firewall?
 
-First of all, login to your server, remember OCSP is checking status on the server-side rather than client-side.
+No OCSP proxy needed, just open OCSP stapling.
+
+in `nginx.conf`:
+
+```nginx
+http {
+    # ...
+
+    resolver 8.8.8.8 8.8.4.4 valid=300s;
+    resolver_timeout 10s;
+
+    server {
+        # ...
+        ssl_stapling on;
+        ssl_stapling_verify on;
+        ssl_trusted_certificate /certs/centaur.cloud.crt;
+    }
+}
+```
+
+# Check whether OCSP stapling is enabled
+
+```sh
+openssl s_client -connect tc.centaur.cloud:443 -tls1 -tlsextdebug -status < /dev/null 2>&1 | awk '{ if ($0 ~ /OCSP response: no response sent/) { print "disabled" } else if ($0 ~ /OCSP Response Status: successful/) { print "enabled" } }'
+```
+
+# Test the OCSP of your certificate
 
 Prepare certs and the OCSP host:
 
@@ -167,32 +198,4 @@ certificate.pem: good
 if the OCSP host has been blocked by a firewall, you will hang after `OCSP Request Data` and wait `OCSP Response Data` for a long time.
 
 > The content above reference from https://akshayranganath.github.io/OCSP-Validation-With-Openssl/
-
-# What if my server is outside of firewall?
-
-No OCSP proxy needed, just open OCSP stapling.
-
-in `nginx.conf`:
-
-```nginx
-http {
-    # ...
-
-    resolver 8.8.8.8 8.8.4.4 valid=300s;
-    resolver_timeout 10s;
-
-    server {
-        # ...
-        ssl_stapling on;
-        ssl_stapling_verify on;
-        ssl_trusted_certificate /certs/centaur.cloud.crt;
-    }
-}
-```
-
-# Check whether OCSP stapling is enabled
-
-```sh
-openssl s_client -connect tc.centaur.cloud:443 -tls1 -tlsextdebug -status < /dev/null 2>&1 | awk '{ if ($0 ~ /OCSP response: no response sent/) { print "disabled" } else if ($0 ~ /OCSP Response Status: successful/) { print "enabled" } }'
-```
 
