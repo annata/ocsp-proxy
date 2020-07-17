@@ -35,19 +35,19 @@ docker run -d --rm --name ocsp-proxy -p 8080:8080 \
            cooolin/ocsp-proxy
 ```
 
-it will listen on port 8080 for HTTP request and will forward the request to the `ocsphost`.
+it will listen on port 8080 for HTTP request and will forward the request to the `ocsphost` (through a HTTP proxy if HTTP_PROXY environment variable has setted).
 
 Then configure your nginx:
 
 ```nginx
 ssl_stapling on;
 ssl_stapling_verify on;
-ssl_stapling_responder http://127.0.0.1:8080/; 
 ssl_trusted_certificate /etc/ssl/ca-certs.pem;  # as the same as `ssl_certificate`
+ssl_stapling_responder http://127.0.0.1:8080/;  # point to the OCSP proxy
 ```
 
 > NOTE:
-> we use `127.0.0.1` by assuming nginx is not in a docker container.
+> we use `127.0.0.1` for nginx not in a docker container.
 
 ## Docker compose usage
 
@@ -84,8 +84,8 @@ server {
 
     ssl_stapling on;
     ssl_stapling_verify on;
-    ssl_stapling_responder http://ocsp-proxy:8080/;  # `ocsp-proxy` is the `container_name` of OSCP proxy service
     ssl_trusted_certificate /certs/certificate.crt;  # as the same as ssl_certificate
+    ssl_stapling_responder http://ocsp-proxy:8080/;  # `ocsp-proxy` is the `container_name` of OSCP proxy service
 
     # ...
 }
@@ -108,26 +108,32 @@ http {
         # ...
         ssl_stapling on;
         ssl_stapling_verify on;
-        ssl_trusted_certificate /certs/centaur.cloud.crt;
+        ssl_trusted_certificate /certs/cen2.pw.crt;
     }
 }
 ```
 
 # Check whether OCSP stapling is enabled
 
+Here is a one-line command to check, change the domain for your own
+
 ```sh
-openssl s_client -connect tc.centaur.cloud:443 -tls1 -tlsextdebug -status < /dev/null 2>&1 | awk '{ if ($0 ~ /OCSP response: no response sent/) { print "disabled" } else if ($0 ~ /OCSP Response Status: successful/) { print "enabled" } }'
+openssl s_client -connect tc.cen2.pw:443 -tls1 -tlsextdebug -status < /dev/null 2>&1 | awk '{ if ($0 ~ /OCSP response: no response sent/) { print "disabled" } else if ($0 ~ /OCSP Response Status: successful/) { print "enabled" } }'
 ```
 
+it shows `enabled` or `disabled`
+
 # Test the OCSP of your certificate
+
+To test the OCSP of your own certificate, simulate a client process, see if it has blocked by firewall.
 
 Prepare certs and the OCSP host:
 
 ```sh
 # Get server cert
-openssl s_client -connect tc.centaur.cloud:443 < /dev/null 2>&1 | sed -n '/-----BEGIN/,/-----END/p' > certificate.pem
+openssl s_client -connect tc.cen2.pw:443 < /dev/null 2>&1 | sed -n '/-----BEGIN/,/-----END/p' > certificate.pem
 # Get intermediate cert
-openssl s_client -showcerts -connect tc.centaur.cloud:443 < /dev/null 2>&1 | sed -n '/-----BEGIN/,/-----END/p' | awk 'BEGIN { n=0 } { if ($0=="-----BEGIN CERTIFICATE-----") { n+=1 } if (n>=2) { print $0 } }' > chain.pem
+openssl s_client -showcerts -connect tc.cen2.pw:443 < /dev/null 2>&1 | sed -n '/-----BEGIN/,/-----END/p' | awk 'BEGIN { n=0 } { if ($0=="-----BEGIN CERTIFICATE-----") { n+=1 } if (n>=2) { print $0 } }' > chain.pem
 # Get the OCSP responder for server cert
 openssl x509 -noout -ocsp_uri -in certificate.pem
 # http://ocsp.int-x3.letsencrypt.org
@@ -196,6 +202,4 @@ certificate.pem: good
 ```
 
 if the OCSP host has been blocked by a firewall, you will hang after `OCSP Request Data` and wait `OCSP Response Data` for a long time.
-
-> The content above reference from https://akshayranganath.github.io/OCSP-Validation-With-Openssl/
 
